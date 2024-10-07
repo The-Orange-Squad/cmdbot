@@ -3,7 +3,7 @@ from discord import Option, Embed
 from discord.ui import Modal, InputText, View, Button, Select
 import json
 import os
-from typing import List, Dict
+from typing import List, Dict, Union
 from datetime import datetime
 import dotenv
 import logging
@@ -18,6 +18,7 @@ dotenv.load_dotenv()
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True  # Needed for accessing member information
 
 bot = discord.Bot(intents=intents)
 
@@ -214,12 +215,14 @@ class ManageCommandsView(View):
             self.add_item(discord.ui.Button(style=discord.ButtonStyle.link, label="No Commands", disabled=True))
         
     async def on_timeout(self):
-        await self.message.edit(view=None)
+        if self.message:
+            await self.message.edit(view=None)
 
 class SelectCommandSelect(discord.ui.Select):
     def __init__(self, user_id, options):
         super().__init__(placeholder="Select a command to manage...", min_values=1, max_values=1, options=options)
         self.user_id = user_id
+
     async def callback(self, interaction: discord.Interaction):
         selected_cmd = self.values[0]
         user_id = str(interaction.user.id)
@@ -334,7 +337,7 @@ async def placeholders(ctx: discord.ApplicationContext):
     await ctx.respond(embed=embed, ephemeral=True)
 
 # Helper function to replace placeholders
-def replace_placeholders(output: str, ctx: discord.ApplicationContext, params: Dict[str, str]) -> str:
+def replace_placeholders(output: str, ctx: Union[discord.Message, discord.ApplicationContext], params: Dict[str, str]) -> str:
     # Replace user placeholders []
     for placeholder, description in PLACEHOLDERS["[]"]["placeholders"].items():
         if placeholder in output:
@@ -351,13 +354,19 @@ def replace_placeholders(output: str, ctx: discord.ApplicationContext, params: D
             elif placeholder == "[user_created_at]":
                 output = output.replace(placeholder, ctx.author.created_at.strftime("%Y-%m-%d %H:%M:%S"))
             elif placeholder == "[user_joined_at]":
-                member = ctx.guild.get_member(ctx.author.id)
+                if isinstance(ctx, discord.Message):
+                    member = ctx.guild.get_member(ctx.author.id)
+                else:
+                    member = ctx.guild.get_member(ctx.author.id)
                 if member and member.joined_at:
                     output = output.replace(placeholder, member.joined_at.strftime("%Y-%m-%d %H:%M:%S"))
                 else:
                     output = output.replace(placeholder, "N/A")
             elif placeholder == "[user_roles]":
-                roles = [role.name for role in ctx.author.roles if role.name != "@everyone"]
+                if isinstance(ctx, discord.Message):
+                    roles = [role.name for role in ctx.author.roles if role.name != "@everyone"]
+                else:
+                    roles = [role.name for role in ctx.author.roles if role.name != "@everyone"]
                 output = output.replace(placeholder, ", ".join(roles) if roles else "None")
             elif placeholder == "[user_status]":
                 output = output.replace(placeholder, str(ctx.author.status).title())
@@ -411,7 +420,10 @@ def replace_placeholders(output: str, ctx: discord.ApplicationContext, params: D
             elif placeholder == "<channel_id>":
                 output = output.replace(placeholder, str(ctx.channel.id))
             elif placeholder == "<message_id>":
-                output = output.replace(placeholder, str(ctx.id))
+                if isinstance(ctx, discord.Message):
+                    output = output.replace(placeholder, str(ctx.id))
+                else:
+                    output = output.replace(placeholder, str(ctx.id))
     return output
 
 # Slash command to show help
@@ -445,6 +457,11 @@ async def help_command(ctx: discord.ApplicationContext):
     embed.add_field(
         name="/placeholders",
         value="List available placeholders you can use in your commands.",
+        inline=False
+    )
+    embed.add_field(
+        name="/sharecmd",
+        value="Share your custom command with another user.",
         inline=False
     )
     embed.add_field(
@@ -501,6 +518,12 @@ List available placeholders for custom commands.
 
 - **Usage:** `/placeholders`
 - **Description:** Displays all the placeholders you can use to make your commands dynamic.
+
+### `/sharecmd`
+Share your custom command with another user.
+
+- **Usage:** `/sharecmd command:<command_name> target_user:<user>`
+- **Description:** Sends the data of your custom command to the specified user via DM.
 
 ### `/help`
 Show help information.
@@ -573,6 +596,17 @@ Custom command outputs can include placeholders that will be dynamically replace
 
 Now, when you type `cc!greet`, the bot will respond with `Hello, [YourName]! Welcome to [YourServer].`
 
+## Sharing Commands
+
+### Sharing a Command with Another User
+
+1. Use `/sharecmd`.
+2. Select the command you want to share.
+3. Specify the target user you want to share the command with.
+4. Confirm the sharing action.
+
+The target user will receive a DM containing the data of your shared command, which they can choose to add to their own custom commands.
+
 ## Limitations
 
 - **Custom Commands per User:** Up to 10.
@@ -594,6 +628,55 @@ Enjoy customizing your Discord experience!
     await ctx.respond("Here is the documentation:", file=file, ephemeral=True)
     # Optionally, remove the file after sending
     os.remove("documentation.md")
+
+async def sharecmd_command_name_autocomplete(ctx: discord.AutocompleteContext):
+    user_id = str(ctx.interaction.user.id)
+    cmds = custom_commands.get(user_id, [])
+    return [
+        cmd.get('name', 'No Name') for cmd in cmds
+    ]
+
+# New Slash command to share custom commands
+@bot.slash_command(name="sharecmd", description="Share your custom command with another user.")
+async def sharecmd(
+    ctx: discord.ApplicationContext,
+    command_name: Option(str, "The name of the command you want to share.", autocomplete=sharecmd_command_name_autocomplete),
+    target_user: Option(discord.User, "The user you want to share the command with.")
+):
+    user_id = str(ctx.author.id)
+    cmds = custom_commands.get(user_id, [])
+    command = next((cmd for cmd in cmds if cmd['name'] == command_name.lower()), None)
+    if not command:
+        await ctx.respond(f"You do not have a command named `{command_name}`.", ephemeral=True)
+        return
+
+    # Prepare the command data to send
+    command_data = {
+        "name": command["name"],
+        "output": command["output"],
+        "description": command.get("description", "No description."),
+        "created_at": command["created_at"]
+    }
+
+    try:
+        # Send DM to the target user
+        dm_embed = Embed(
+            title=f"Custom Command Shared by {ctx.author.name}",
+            color=discord.Color.green(),
+            description=f"You have received a custom command from {ctx.author.mention}."
+        )
+        dm_embed.add_field(name="Command Name", value=f"cc!{command_data['name']}", inline=False)
+        dm_embed.add_field(name="Command Output", value=command_data['output'], inline=False)
+        dm_embed.add_field(name="Description", value=command_data['description'], inline=False)
+        dm_embed.add_field(name="Created At", value=command_data['created_at'], inline=False)
+        await target_user.send(embed=dm_embed)
+        logger.info(f"{ctx.author} shared command `cc!{command_name}` with {target_user}")
+        await ctx.respond(f"Successfully shared `cc!{command_name}` with {target_user}.", ephemeral=True)
+    except discord.Forbidden:
+        await ctx.respond(f"Could not send a DM to {target_user}. They might have DMs disabled.", ephemeral=True)
+    except Exception as e:
+        logger.error(f"Error sharing command: {e}")
+        await ctx.respond("An error occurred while trying to share the command.", ephemeral=True)
 
 # Listen to messages for custom commands
 @bot.event
