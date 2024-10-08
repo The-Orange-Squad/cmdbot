@@ -2,7 +2,7 @@
 
 import discord
 from discord.ext import commands
-from discord import option
+from discord.commands import Option
 import logging
 from cogs.filesystem import FileSystem
 from data import load_filesystems, save_filesystems
@@ -19,18 +19,11 @@ class OSExecCog(commands.Cog):
         name="os_exec",
         description="Simulate OS commands in a virtual environment."
     )
-    @option("command", str, description="The OS command to execute", required=True)
-    @option(
-        "file",
-        discord.Attachment,
-        description="Optional file to upload",
-        required=False
-    )
     async def os_exec(
         self,
         ctx: discord.ApplicationContext,
-        command: str,
-        file: discord.Attachment = None
+        command: Option(str, "The command to execute."),
+        file: Option(discord.Attachment, "File to upload.", required=False)
     ):
         await ctx.defer(ephemeral=True)
         user_id = str(ctx.user.id)
