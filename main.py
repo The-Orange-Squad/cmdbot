@@ -8,6 +8,7 @@ from datetime import datetime
 import dotenv
 import logging
 import random
+import re  # Import regex module
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -77,6 +78,10 @@ PLACEHOLDERS = {
             "<channel_id>": "The ID of the channel where the command was used",
             "<message_id>": "The ID of the triggering message",
         }
+    },
+    "{[ ]}": {  # New Arguments placeholder group
+        "type": "arguments",
+        "placeholders": {}  # Dynamic placeholders, handled via regex
     }
 }
 
@@ -99,7 +104,7 @@ class CreateCommandModal(Modal):
         self.add_item(InputText(
             label="Command Output",
             style=discord.InputTextStyle.long,
-            placeholder="e.g., Hello, [username]! Welcome to {servername}.",
+            placeholder="e.g., Hello, [username]! Welcome to {servername}. {[<arg1>]}",
             max_length=500,
             required=True
         ))
@@ -332,6 +337,14 @@ async def placeholders(ctx: discord.ApplicationContext):
         color=discord.Color.purple()
     )
     for group, data in PLACEHOLDERS.items():
+        if group == "{[ ]}":
+            # Special handling for Arguments placeholders
+            embed.add_field(
+                name="Arguments Placeholders `{[<arg_name>]}`",
+                value="Use `{[<arg_name>]}` to include arguments in your command output. Provide corresponding arguments when invoking the command.",
+                inline=False
+            )
+            continue
         description = "\n".join([f"`{ph}`: {desc}" for ph, desc in data['placeholders'].items()])
         embed.add_field(name=f"{group} Placeholders ({data['type']})", value=description, inline=False)
     await ctx.respond(embed=embed, ephemeral=True)
@@ -424,6 +437,14 @@ def replace_placeholders(output: str, ctx: Union[discord.Message, discord.Applic
                     output = output.replace(placeholder, str(ctx.id))
                 else:
                     output = output.replace(placeholder, str(ctx.id))
+
+    # Replace Arguments placeholders {[<arg_name>]}
+    arg_pattern = re.compile(r"\{\[\<(\w+)\>\]\}")  # matches {[<arg_name>]}
+    matches = arg_pattern.findall(output)
+    for arg_name in matches:
+        value = params.get(arg_name, "")
+        output = re.sub(r"\{\[\<" + re.escape(arg_name) + r"\>\]\}", value.strip(), output)
+    
     return output
 
 # Slash command to show help
@@ -494,6 +515,7 @@ Create a new custom command.
 
 - **Usage:** `/createcmd`
 - **Process:** A modal will appear asking for the command name, output, and an optional description.
+- **Note:** You can include arguments in your command output using `{[<arg_name>]}`. Provide corresponding arguments when invoking the command.
 
 ### `/cmdlist`
 List and manage your custom commands.
@@ -542,9 +564,25 @@ Get the bot's documentation.
 - **Prefix:** `cc!`
 - **Example:** If you create a command named `greet`, use it by typing `cc!greet`.
 
+### Including Arguments
+
+You can include arguments in your custom command outputs using the `{[<arg_name>]}` syntax. When invoking the command, provide the corresponding arguments in order.
+
+**Example:**
+
+1. **Creating a Command with Arguments:**
+   - **Command Name:** `welcome`
+   - **Command Output:** `Hello, {[<name>]}! Welcome to {servername}.`
+   
+2. **Invoking the Command:**
+   - **Usage:** `cc!welcome Alice`
+   - **Bot Response:** `Hello, Alice! Welcome to YourServerName.`
+
+**Note:** Ensure that the number of arguments provided matches the number of `{[<arg_name>]}` placeholders in your command output.
+
 ## Placeholders
 
-Custom command outputs can include placeholders that will be dynamically replaced when the command is executed. There are three types of placeholders:
+Custom command outputs can include placeholders that will be dynamically replaced when the command is executed. There are four types of placeholders:
 
 ### User Placeholders `[]`
 
@@ -584,17 +622,23 @@ Custom command outputs can include placeholders that will be dynamically replace
 - `<channel_id>`: The ID of the channel where the command was used.
 - `<message_id>`: The ID of the triggering message.
 
+### Arguments Placeholders `{[<arg_name>]}`
+
+- `{[<arg1>]}`: First argument provided when invoking the command.
+- `{[<arg2>]}`: Second argument provided when invoking the command.
+- *...and so on.*
+
 ## Examples
 
-### Creating a Greeting Command
+### Creating a Greeting Command with Arguments
 
 1. Use `/createcmd`.
 2. Enter `greet` as the command name.
-3. Enter `Hello, [username]! Welcome to {servername}.` as the command output.
-4. (Optional) Add a description like "Greets the user."
+3. Enter `Hello, {[<name>]}! Welcome to {servername}.` as the command output.
+4. (Optional) Add a description like "Greets the user with their name."
 5. Save the command.
 
-Now, when you type `cc!greet`, the bot will respond with `Hello, [YourName]! Welcome to [YourServer].`
+Now, when you type `cc!greet Alice`, the bot will respond with `Hello, Alice! Welcome to YourServerName.`
 
 ## Sharing Commands
 
@@ -620,7 +664,7 @@ The target user will receive a DM containing the data of your shared command, wh
 - Use placeholders to make your commands dynamic and personalized.
 
 Enjoy customizing your Discord experience!
-"""
+    """
     # Create a temporary file with the documentation
     with open("documentation.md", "w") as f:
         f.write(documentation)
@@ -685,27 +729,40 @@ async def on_message(message: discord.Message):
         return
     if not message.content.startswith("cc!"):
         return
-    command_name = message.content[3:].split()[0].lower()
+    content = message.content[3:].strip()
+    if not content:
+        await message.channel.send("Please provide a command name.")
+        return
+    parts = content.split()
+    command_name = parts[0].lower()
     user_id = str(message.author.id)
     cmds = custom_commands.get(user_id, [])
-    for cmd in cmds:
-        if cmd["name"] == command_name:
-            # Extract parameters if any
-            params = {}
-            parts = message.content.split()
-            if len(parts) > 1:
-                for i, part in enumerate(parts[1:], start=1):
-                    params[f"input{i}"] = part
-            output = replace_placeholders(
-                cmd["output"],
-                message,
-                params
-            )
-            await message.channel.send(output)
-            logger.info(f"Command `cc!{command_name}` used by {message.author}")
-            return
-    await message.channel.send("Custom command not found.")
-    logger.warning(f"Command `cc!{command_name}` not found for user {message.author}")
+    command = next((cmd for cmd in cmds if cmd['name'] == command_name), None)
+    if not command:
+        await message.channel.send("Custom command not found.")
+        logger.warning(f"Command `cc!{command_name}` not found for user {message.author}")
+        return
+    # Extract arguments based on {[<arg_name>]} placeholders
+    output = command["output"]
+    arg_pattern = re.compile(r"\{\[\<(\w+)\>\]\}")
+    arg_names = arg_pattern.findall(output)
+    num_args = len(arg_names)
+    supplied_args = parts[1:]
+    if len(supplied_args) < num_args:
+        await message.channel.send(f"Missing arguments. This command requires {num_args} arguments: {', '.join(arg_names)}.")
+        return
+    # Assign arguments to arg_names
+    params = {}
+    for i, arg_name in enumerate(arg_names):
+        if i < len(supplied_args):
+            params[arg_name] = supplied_args[i]
+        else:
+            params[arg_name] = ""
+    # Optionally, handle extra arguments if necessary
+    # Now, replace placeholders
+    output = replace_placeholders(command["output"], message, params)
+    await message.channel.send(output)
+    logger.info(f"Command `cc!{command_name}` used by {message.author}")
 
 # Run the bot
 bot.run(os.getenv("TOKEN"))
