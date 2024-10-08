@@ -36,7 +36,14 @@ class OSExecCog(commands.Cog):
         # Handle file upload
         if file is not None:
             # Download the file and add it to the user's filesystem
-            file_content = await file.read()
+            try:
+                file_content = await file.read()
+            except Exception as e:
+                logger.error(f"Failed to read uploaded file: {e}")
+                await ctx.respond(
+                    "Failed to read the uploaded file.", ephemeral=True
+                )
+                return
             # Check if adding this file exceeds the 5MB limit
             if fs.total_size + len(file_content) > fs.max_size:
                 await ctx.respond(
@@ -47,18 +54,20 @@ class OSExecCog(commands.Cog):
             filename = file.filename
             result = fs.add_file(filename, file_content)
             if result:
-                await ctx.respond(
-                    f"File '{filename}' uploaded successfully.", ephemeral=True
-                )
+                response = f"File '{filename}' uploaded successfully."
+                logger.info(f"User {ctx.user} uploaded file: {filename}")
             else:
-                await ctx.respond(
-                    f"Failed to upload file '{filename}'.", ephemeral=True
-                )
+                response = f"Failed to upload file '{filename}'. It may already exist or exceed storage limits."
+                logger.warning(f"User {ctx.user} failed to upload file: {filename}")
+            await ctx.respond(response, ephemeral=True)
             save_filesystems(self.filesystems)
             return
 
         # Handle command execution
         output = fs.execute_command(command)
+        if not output.strip():
+            output = "Command executed successfully with no output."
+        logger.info(f"User {ctx.user} executed command: {command}\nOutput: {output}")
         await ctx.respond(f"```\n{output}\n```", ephemeral=True)
 
         # Save the filesystem
