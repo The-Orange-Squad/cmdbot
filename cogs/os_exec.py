@@ -6,6 +6,7 @@ from discord.commands import Option
 import logging
 from cogs.filesystem import FileSystem
 from data import load_filesystems, save_filesystems
+import io
 
 logger = logging.getLogger('CustomCommandBot')
 
@@ -68,7 +69,19 @@ class OSExecCog(commands.Cog):
         if not output.strip():
             output = "Command executed successfully with no output."
         logger.info(f"User {ctx.user} executed command: {command}\nOutput: {output}")
-        await ctx.respond(f"```\n{output}\n```", ephemeral=True)
+
+        # Check if output exceeds 2000 characters (approx. 2KB)
+        if len(output) <= 2000:
+            await ctx.respond(f"```\n{output}\n```", ephemeral=True)
+        else:
+            # Create a text file with the output
+            buffer = io.BytesIO(output.encode('utf-8'))
+            file_to_send = discord.File(fp=buffer, filename='output.txt')
+            await ctx.respond(
+                "Output exceeds 2KB and has been sent as a file attachment.",
+                file=file_to_send,
+                ephemeral=True
+            )
 
         # Save the filesystem
         save_filesystems(self.filesystems)
