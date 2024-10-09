@@ -39,6 +39,12 @@ class OSExecCog(commands.Cog):
             # Download the file and add it to the user's filesystem
             try:
                 file_content = await file.read()
+                # if it is binary, fail
+                if not file_content.decode('utf-8', errors='ignore').isprintable():
+                    await ctx.respond(
+                        "Cannot upload binary files. Please upload a text file.", ephemeral=True
+                    )
+                    return
             except Exception as e:
                 logger.error(f"Failed to read uploaded file: {e}")
                 await ctx.respond(
@@ -64,11 +70,23 @@ class OSExecCog(commands.Cog):
             save_filesystems(self.filesystems)
             return
 
-        # Handle command execution
-        output = fs.execute_command(command)
+        output, _ = fs.execute_command(command)
+        
         if not output.strip():
             output = "Command executed successfully with no output."
         logger.info(f"User {ctx.user} executed command: {command}\nOutput: {output}")
+    
+        if _:
+            # if the command is "download", send _ as a file attachment
+            buffer = io.BytesIO(_.encode('utf-8'))
+            file_to_send = discord.File(fp=buffer, filename=output)
+            await ctx.respond(
+                "File downloaded successfully.",
+                file=file_to_send,
+                ephemeral=True
+            )
+            return
+
 
         # Check if output exceeds 2000 characters (approx. 2KB)
         if len(output) <= 2000:

@@ -221,6 +221,8 @@ class FileSystem:
             return self.cmd_date(args)
         elif cmd == 'cal':
             return self.cmd_cal(args)
+        elif cmd == 'download':
+            return self.cmd_download(args)
         elif cmd == 'help':
             return self.cmd_help(args)
         else:
@@ -318,6 +320,17 @@ class FileSystem:
             return content if content else 'File is empty.'
         except UnicodeDecodeError:
             return f"cat: {path}: Binary file not supported"
+    
+    def cmd_download(self, args):
+        if not args:
+            return 'download: missing file operand\nUsage: download <file_name>'
+        path = args[0]
+        file = self.resolve_path(path)
+        if not file:
+            return f"download: {path}: No such file"
+        if isinstance(file, Directory):
+            return f"download: {path}: Is a directory"
+        return path, file.content
 
     def cmd_echo(self, args):
         if not args:
@@ -540,7 +553,7 @@ class FileSystem:
         commands = [
             'ls', 'cd', 'pwd', 'mkdir', 'touch', 'rm', 'cat', 'echo', 'cp', 'mv',
             'du', 'df', 'find', 'grep', 'chmod', 'chown', 'ps', 'kill', 'ping',
-            'uptime', 'whoami', 'hostname', 'date', 'cal', 'help'
+            'uptime', 'whoami', 'hostname', 'date', 'cal', 'help', 'download'
         ]
         return 'Available commands:\n' + '\n'.join(commands)
 
