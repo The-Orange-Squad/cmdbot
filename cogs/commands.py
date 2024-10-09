@@ -118,6 +118,11 @@ class CommandsCog(commands.Cog):
             value="Get the bot's documentation.",
             inline=False
         )
+        embed.add_field(
+            name="Using Nano",
+            value="Edit a file in your virtual filesystem.",
+            inline=False
+        )
         embed.set_footer(text="Use `cc!command_name` to execute your custom command.")
         await ctx.respond(embed=embed, ephemeral=True)
 
@@ -181,6 +186,12 @@ Get the bot's documentation.
 - **Usage:** `/docs`
 - **Description:** Sends this documentation as a Markdown file.
 
+### `/nano`
+Edit a file in your virtual filesystem.
+
+- **Usage:** `/nano filename:<file_name>`
+- **Description:** Opens a modal to edit the specified file. Note that this command will fail if the file is a binary file or exceeds 4000 characters.
+
 ## Using Custom Commands
 
 - **Prefix:** `cc!`
@@ -243,6 +254,16 @@ Custom command outputs can include placeholders that will be dynamically replace
 - `<channel_name>`: The name of the channel where the command was used.
 - `<channel_id>`: The ID of the channel where the command was used.
 - `<message_id>`: The ID of the triggering message.
+
+### Orange Bank Placeholders `ob_`
+
+- `ob_balance`: The user's balance from Orange Bank.
+- `ob_inventory`: The user's inventory from Orange Bank.
+- `ob_streak`: The user's bump streak from Orange Bank.
+- `ob_messages`: The user's message count from Orange Bank.
+- `ob_position_in_leaderboard`: The user's position in the message leaderboard from Orange Bank.
+- `ob_daily_leaderboard_stats`: The user's daily leaderboard stats from Orange Bank.
+- `ob_balance_leaderboard_stats`: The user's balance leaderboard stats from Orange Bank.
 
 ### Arguments Placeholders `{[<arg_name>]}`
 
