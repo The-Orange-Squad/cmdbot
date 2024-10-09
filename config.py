@@ -49,5 +49,18 @@ PLACEHOLDERS = {
     "{[ ]}": {  # New Arguments placeholder group
         "type": "arguments",
         "placeholders": {}  # Dynamic placeholders, handled via regex
+    },
+    "ob_": {  # New Orange Bank placeholder group
+        "type": "orange_bank",
+        "placeholders": {
+            "ob_balance": "The user's balance from Orange Bank",
+            "ob_inventory": "The user's inventory from Orange Bank",
+            "ob_streak": "The user's bump streak from Orange Bank",
+            "ob_messages": "The user's message count from Orange Bank",
+            "ob_position_in_leaderboard": "The user's position in the message leaderboard from Orange Bank",
+            "ob_daily_leaderboard_stats": "The user's daily leaderboard stats from Orange Bank",
+            "ob_balance_leaderboard_stats": "The user's balance leaderboard stats from Orange Bank",
+            "ob_all": "All data from Orange Bank",
+        }
     }
 }

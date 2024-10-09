@@ -16,6 +16,7 @@ dotenv.load_dotenv()
 from cogs.commands import CommandsCog
 from cogs.events import EventsCog
 from cogs.os_exec import OSExecCog
+from cogs.orange_bank import OrangeBankCog  # New Cog
 
 # Define intents
 intents = discord.Intents.default()
@@ -28,7 +29,8 @@ bot = commands.Bot(intents=intents, command_prefix="!", help_command=None)
 # Load Cogs
 bot.add_cog(CommandsCog(bot))
 bot.add_cog(EventsCog(bot))
-bot.add_cog(OSExecCog(bot))  # Add this line
+bot.add_cog(OSExecCog(bot))  # Existing Cog
+bot.add_cog(OrangeBankCog(bot))  # Load OrangeBankCog
 
 # Run the bot
 if __name__ == "__main__":

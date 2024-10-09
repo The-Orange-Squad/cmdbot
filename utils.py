@@ -5,40 +5,41 @@ from datetime import datetime
 import discord
 from config import PLACEHOLDERS
 import logging
+import asyncio
 
 logger = logging.getLogger('CustomCommandBot')
 
-def replace_placeholders(output: str, ctx: discord.Interaction, params: dict) -> str:
-    # Replace user placeholders []
+async def replace_placeholders(output: str, ctx: discord.Interaction, params: dict, orange_bank_cog) -> str:
+    # Replace author placeholders []
     for placeholder, description in PLACEHOLDERS["[]"]["placeholders"].items():
         if placeholder in output:
-            if placeholder == "[username]":
-                output = output.replace(placeholder, ctx.user.name)
-            elif placeholder == "[user_id]":
-                output = output.replace(placeholder, str(ctx.user.id))
-            elif placeholder == "[user_mention]":
-                output = output.replace(placeholder, ctx.user.mention)
-            elif placeholder == "[user_avatar]":
-                output = output.replace(placeholder, str(ctx.user.avatar.url) if ctx.user.avatar else "No Avatar")
-            elif placeholder == "[user_discriminator]":
-                output = output.replace(placeholder, ctx.user.discriminator)
-            elif placeholder == "[user_created_at]":
-                output = output.replace(placeholder, ctx.user.created_at.strftime("%Y-%m-%d %H:%M:%S"))
-            elif placeholder == "[user_joined_at]":
-                member = ctx.guild.get_member(ctx.user.id)
+            if placeholder == "[authorname]":
+                output = output.replace(placeholder, ctx.author.name)
+            elif placeholder == "[author_id]":
+                output = output.replace(placeholder, str(ctx.author.id))
+            elif placeholder == "[author_mention]":
+                output = output.replace(placeholder, ctx.author.mention)
+            elif placeholder == "[author_avatar]":
+                output = output.replace(placeholder, str(ctx.author.avatar.url) if ctx.author.avatar else "No Avatar")
+            elif placeholder == "[author_discriminator]":
+                output = output.replace(placeholder, ctx.author.discriminator)
+            elif placeholder == "[author_created_at]":
+                output = output.replace(placeholder, ctx.author.created_at.strftime("%Y-%m-%d %H:%M:%S"))
+            elif placeholder == "[author_joined_at]":
+                member = ctx.guild.get_member(ctx.author.id)
                 if member and member.joined_at:
                     output = output.replace(placeholder, member.joined_at.strftime("%Y-%m-%d %H:%M:%S"))
                 else:
                     output = output.replace(placeholder, "N/A")
-            elif placeholder == "[user_roles]":
-                member = ctx.guild.get_member(ctx.user.id)
+            elif placeholder == "[author_roles]":
+                member = ctx.guild.get_member(ctx.author.id)
                 if member:
                     roles = [role.name for role in member.roles if role.name != "@everyone"]
                     output = output.replace(placeholder, ", ".join(roles) if roles else "None")
                 else:
                     output = output.replace(placeholder, "None")
-            elif placeholder == "[user_status]":
-                member = ctx.guild.get_member(ctx.user.id)
+            elif placeholder == "[author_status]":
+                member = ctx.guild.get_member(ctx.author.id)
                 output = output.replace(placeholder, str(member.status).title() if member else "N/A")
 
     # Replace server placeholders {}
@@ -98,5 +99,17 @@ def replace_placeholders(output: str, ctx: discord.Interaction, params: dict) ->
     for arg_name in matches:
         value = params.get(arg_name, "")
         output = re.sub(r"\{\[\<" + re.escape(arg_name) + r"\>\]\}", value.strip(), output)
+
+    # Replace Orange Bank placeholders ob_
+    ob_pattern = re.compile(r"\bob_\w+\b")
+    ob_matches = ob_pattern.findall(output)
+    for ob_placeholder in ob_matches:
+        placeholder_type = ob_placeholder  # e.g., ob_balance
+        # Send request to Orange Bank and await response
+        response = await orange_bank_cog.request_orange_bank(ctx.author.id, placeholder_type)
+        if response is not None:
+            output = output.replace(ob_placeholder, str(response))
+        else:
+            output = output.replace(ob_placeholder, "N/A")  # Fallback if no response
 
     return output

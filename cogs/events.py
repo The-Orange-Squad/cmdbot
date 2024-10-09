@@ -5,6 +5,8 @@ from utils import replace_placeholders
 from data import save_commands
 import logging
 import re
+import asyncio
+import cogs.orange_bank as orange_bank
 
 logger = logging.getLogger('CustomCommandBot')
 
@@ -50,8 +52,16 @@ class EventsCog(commands.Cog):
         # Optionally, handle extra arguments if necessary
         # Now, replace placeholders
         try:
-            output = replace_placeholders(command["output"], message, params)
-            await message.channel.send(output)
+            orange_bank_cog = self.bot.get_cog('OrangeBankCog')
+            if not orange_bank_cog:
+                await message.channel.send("Orange Bank Cog is not loaded.")
+                return
+
+            # Replace placeholders asynchronously
+            # get ctx from message
+            ctx = await self.bot.get_context(message)
+            processed_output = await replace_placeholders(output, ctx, params, orange_bank_cog)
+            await message.channel.send(processed_output)
             logger.info(f"Command `cc!{command_name}` used by {message.author}")
         except Exception as e:
             logger.error(f"Error processing command `cc!{command_name}`: {e}")
