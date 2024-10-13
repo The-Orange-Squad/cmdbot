@@ -60,7 +60,7 @@ class EventsCog(commands.Cog):
             # Replace placeholders asynchronously
             # get ctx from message
             ctx = await self.bot.get_context(message)
-            processed_output = await replace_placeholders(output, ctx, params, orange_bank_cog, command)
+            processed_output = await replace_placeholders(output, ctx, params, orange_bank_cog, command=command)
             await message.channel.send(processed_output)
             logger.info(f"Command `cc!{command_name}` used by {message.author}")
         except Exception as e:

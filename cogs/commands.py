@@ -215,7 +215,7 @@ You can include arguments in your custom command outputs using the `{[<arg_name>
 
 ## Placeholders
 
-Custom command outputs can include placeholders that will be dynamically replaced when the command is executed. There are five types of placeholders:
+Custom command outputs can include placeholders that will be dynamically replaced when the command is executed. There are four types of placeholders:
 
 ### User Placeholders `[]`
 
@@ -266,28 +266,26 @@ Custom command outputs can include placeholders that will be dynamically replace
 - `ob_balance_leaderboard_stats`: The user's balance leaderboard stats from Orange Bank.
 
 ### Arguments Placeholders `{[<arg_name>]}`
-    
+
 - `{[<arg1>]}`: First argument provided when invoking the command.
 - `{[<arg2>]}`: Second argument provided when invoking the command.
 - *...and so on.*
 
 ## Examples
 
-### Creating a Greeting Command with Arguments and Custom Random Placeholders
+### Creating a Greeting Command with Arguments
 
 1. Use `/createcmd`.
 2. Enter `greet` as the command name.
-3. Enter `Hello, {[<name>]}! Your lucky number is <random_number> and you chose <random_choice>. Welcome to {servername}.` as the command output.
-4. (Optional) Add a random number range like `1-1000`.
-5. (Optional) Add random choice options like `Red, Green, Blue`.
-6. (Optional) Add a description like "Greets the user with their name and a lucky number."
-7. Save the command.
+3. Enter `Hello, {[<name>]}! Welcome to {servername}.` as the command output.
+4. (Optional) Add a description like "Greets the user with their name."
+5. Save the command.
 
-Now, when you type `cc!greet Alice`, the bot might respond with `Hello, Alice! Your lucky number is 472 and you chose Green. Welcome to YourServerName.`
+Now, when you type `cc!greet Alice`, the bot will respond with `Hello, Alice! Welcome to YourServerName.`
 
-### Sharing Commands
+## Sharing Commands
 
-#### Sharing a Command with Another User
+### Sharing a Command with Another User
 
 1. Use `/sharecmd`.
 2. Select the command you want to share.
@@ -346,10 +344,6 @@ Enjoy customizing your Discord experience!
             "description": command.get("description", "No description."),
             "created_at": command["created_at"]
         }
-        if "random_number" in command:
-            command_data["random_number"] = command["random_number"]
-        if "random_choice" in command:
-            command_data["random_choice"] = command["random_choice"]
 
         try:
             # Send DM to the target user
@@ -362,12 +356,6 @@ Enjoy customizing your Discord experience!
             dm_embed.add_field(name="Command Output", value=command_data['output'], inline=False)
             dm_embed.add_field(name="Description", value=command_data['description'], inline=False)
             dm_embed.add_field(name="Created At", value=command_data['created_at'], inline=False)
-            if "random_number" in command_data:
-                rn = command_data["random_number"]
-                dm_embed.add_field(name="Random Number Range", value=f"{rn['min']} - {rn['max']}", inline=False)
-            if "random_choice" in command_data:
-                rc = command_data["random_choice"]
-                dm_embed.add_field(name="Random Choice Options", value=', '.join(rc), inline=False)
             await target_user.send(embed=dm_embed)
             logger.info(f"{ctx.author} shared command `cc!{command_name}` with {target_user}")
             await ctx.respond(f"Successfully shared `cc!{command_name}` with {target_user}.", ephemeral=True)
