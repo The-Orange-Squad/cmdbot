@@ -24,6 +24,20 @@ class CreateCommandModal(Modal):
             max_length=500,
             required=True
         ))
+        # Add fields for custom random_number
+        self.add_item(InputText(
+            label="Random Number Range (Optional)",
+            placeholder="e.g., 1-100",
+            max_length=20,
+            required=False
+        ))
+        # Add fields for custom random_choice
+        self.add_item(InputText(
+            label="Random Choice Options (Optional)",
+            placeholder="e.g., Option1, Option2, Option3",
+            max_length=100,
+            required=False
+        ))
         # Add a description field to guide users
         self.add_item(InputText(
             label="Description (Optional)",
@@ -58,19 +72,61 @@ class CreateCommandModal(Modal):
                 )
                 return
         command_output = self.children[1].value.strip()
-        description = self.children[2].value.strip() if self.children[2].value else "No description."
+        description = self.children[4].value.strip() if self.children[4].value else "No description."
+        
+        # Handle custom random_number range
+        random_number_input = self.children[2].value.strip()
+        random_number = {}
+        if random_number_input:
+            try:
+                min_val, max_val = map(int, random_number_input.split('-'))
+                if min_val >= max_val:
+                    await interaction.response.send_message(
+                        "Random Number Range: Minimum must be less than Maximum.",
+                        ephemeral=True
+                    )
+                    return
+                random_number = {"min": min_val, "max": max_val}
+            except ValueError:
+                await interaction.response.send_message(
+                    "Random Number Range: Please enter in the format `min-max`, e.g., `1-100`.",
+                    ephemeral=True
+                )
+                return
+        
+        # Handle custom random_choice options
+        random_choice_input = self.children[3].value.strip()
+        random_choice = []
+        if random_choice_input:
+            choices = [choice.strip() for choice in random_choice_input.split(',') if choice.strip()]
+            if not choices:
+                await interaction.response.send_message(
+                    "Random Choice Options: Please provide at least one valid option.",
+                    ephemeral=True
+                )
+                return
+            random_choice = choices
+        
         if len(command_output) > 500:
             await interaction.response.send_message(
                 "Command output exceeds 500 characters.",
                 ephemeral=True
             )
             return
-        custom_commands[user_id].append({
+        
+        command_data = {
             "name": command_name,
             "output": command_output,
             "description": description,
             "created_at": datetime.utcnow().isoformat()
-        })
+        }
+        
+        if random_number:
+            command_data["random_number"] = random_number
+        if random_choice:
+            command_data["random_choice"] = random_choice
+        
+        custom_commands[user_id].append(command_data)
         save_commands(custom_commands)
         logger.info(f"User {interaction.user} created command: {command_name}")
         await interaction.response.send_message(
@@ -90,6 +146,25 @@ class EditCommandModal(Modal):
             max_length=500,
             required=True
         ))
+        # Add fields for custom random_number
+        random_number = command.get("random_number", {})
+        random_number_range = f"{random_number['min']}-{random_number['max']}" if random_number else ""
+        self.add_item(InputText(
+            label="Random Number Range (Optional)",
+            placeholder="e.g., 1-100",
+            value=random_number_range,
+            max_length=20,
+            required=False
+        ))
+        # Add fields for custom random_choice
+        random_choice_options = ', '.join(command["random_choice"]) if "random_choice" in command else ""
+        self.add_item(InputText(
+            label="Random Choice Options (Optional)",
+            placeholder="e.g., Option1, Option2, Option3",
+            value=random_choice_options,
+            max_length=100,
+            required=False
+        ))
         self.add_item(InputText(
             label="Description (Optional)",
             value=command.get('description', ''),
@@ -101,20 +176,64 @@ class EditCommandModal(Modal):
         user_id = str(interaction.user.id)
         custom_commands = self.bot.custom_commands
         command_output = self.children[0].value.strip()
-        description = self.children[1].value.strip() if self.children[1].value else self.command.get("description", "")
+        description = self.children[4].value.strip() if self.children[4].value else self.command.get("description", "No description.")
+        
+        # Handle custom random_number range
+        random_number_input = self.children[1].value.strip()
+        random_number = {}
+        if random_number_input:
+            try:
+                min_val, max_val = map(int, random_number_input.split('-'))
+                if min_val >= max_val:
+                    await interaction.response.send_message(
+                        "Random Number Range: Minimum must be less than Maximum.",
+                        ephemeral=True
+                    )
+                    return
+                random_number = {"min": min_val, "max": max_val}
+            except ValueError:
+                await interaction.response.send_message(
+                    "Random Number Range: Please enter in the format `min-max`, e.g., `1-100`.",
+                    ephemeral=True
+                )
+                return
+        
+        # Handle custom random_choice options
+        random_choice_input = self.children[2].value.strip()
+        random_choice = []
+        if random_choice_input:
+            choices = [choice.strip() for choice in random_choice_input.split(',') if choice.strip()]
+            if not choices:
+                await interaction.response.send_message(
+                    "Random Choice Options: Please provide at least one valid option.",
+                    ephemeral=True
+                )
+                return
+            random_choice = choices
+        
         if len(command_output) > 500:
             await interaction.response.send_message(
                 "Command output exceeds 500 characters.",
                 ephemeral=True
             )
             return
+        
         # Update the command
         for cmd in custom_commands[user_id]:
             if cmd["name"] == self.command['name']:
                 cmd['output'] = command_output
                 cmd['description'] = description
                 cmd['edited_at'] = datetime.utcnow().isoformat()
+                if random_number:
+                    cmd['random_number'] = random_number
+                else:
+                    cmd.pop('random_number', None)
+                if random_choice:
+                    cmd['random_choice'] = random_choice
+                else:
+                    cmd.pop('random_choice', None)
                 break
+        
         save_commands(custom_commands)
         logger.info(f"User {interaction.user} edited command: {self.command['name']}")
         await interaction.response.send_message(
