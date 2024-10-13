@@ -10,35 +10,35 @@ import asyncio
 logger = logging.getLogger('CustomCommandBot')
 
 async def replace_placeholders(output: str, ctx: discord.Interaction, params: dict, orange_bank_cog) -> str:
-    # Replace author placeholders []
+    # Replace user placeholders []
     for placeholder, description in PLACEHOLDERS["[]"]["placeholders"].items():
         if placeholder in output:
-            if placeholder == "[authorname]":
+            if placeholder == "[username]":
                 output = output.replace(placeholder, ctx.author.name)
-            elif placeholder == "[author_id]":
+            elif placeholder == "[user_id]":
                 output = output.replace(placeholder, str(ctx.author.id))
-            elif placeholder == "[author_mention]":
+            elif placeholder == "[user_mention]":
                 output = output.replace(placeholder, ctx.author.mention)
-            elif placeholder == "[author_avatar]":
+            elif placeholder == "[user_avatar]":
                 output = output.replace(placeholder, str(ctx.author.avatar.url) if ctx.author.avatar else "No Avatar")
-            elif placeholder == "[author_discriminator]":
+            elif placeholder == "[user_discriminator]":
                 output = output.replace(placeholder, ctx.author.discriminator)
-            elif placeholder == "[author_created_at]":
+            elif placeholder == "[user_created_at]":
                 output = output.replace(placeholder, ctx.author.created_at.strftime("%Y-%m-%d %H:%M:%S"))
-            elif placeholder == "[author_joined_at]":
+            elif placeholder == "[user_joined_at]":
                 member = ctx.guild.get_member(ctx.author.id)
                 if member and member.joined_at:
                     output = output.replace(placeholder, member.joined_at.strftime("%Y-%m-%d %H:%M:%S"))
                 else:
                     output = output.replace(placeholder, "N/A")
-            elif placeholder == "[author_roles]":
+            elif placeholder == "[user_roles]":
                 member = ctx.guild.get_member(ctx.author.id)
                 if member:
                     roles = [role.name for role in member.roles if role.name != "@everyone"]
                     output = output.replace(placeholder, ", ".join(roles) if roles else "None")
                 else:
                     output = output.replace(placeholder, "None")
-            elif placeholder == "[author_status]":
+            elif placeholder == "[user_status]":
                 member = ctx.guild.get_member(ctx.author.id)
                 output = output.replace(placeholder, str(member.status).title() if member else "N/A")
 
