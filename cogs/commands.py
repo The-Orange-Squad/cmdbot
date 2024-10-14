@@ -19,10 +19,8 @@ def global_autocomplete_commands(ctx, cmd_type):
     user_id = str(ctx.interaction.user.id)
     cmds = ctx.bot.custom_commands.get(user_id, {})
     commands = cmds.get(cmd_type, [])
-    return [
-        discord.SelectOption(label=cmd['name'], description=cmd.get('description', 'No description.'))
-        for cmd in commands
-    ]
+    # return a simple list of command names
+    return [cmd['name'] for cmd in commands]
 
 class CommandsCog(commands.Cog):
     def __init__(self, bot):
