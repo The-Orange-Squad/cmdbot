@@ -1,7 +1,8 @@
 # cogs/commands.py
 import discord
 from discord.ext import commands
-from discord import Option, Embed
+from discord.commands import Option
+from discord import Embed
 from modals import CreateCommandModal
 from views import ManageCommandsView
 from utils import replace_placeholders
@@ -10,8 +11,18 @@ import logging
 import json
 import os
 from discord.ui import Select, View
+from datetime import datetime
 
 logger = logging.getLogger('CustomCommandBot')
+
+def global_autocomplete_commands(ctx, cmd_type):
+    user_id = str(ctx.interaction.user.id)
+    cmds = ctx.bot.custom_commands.get(user_id, {})
+    commands = cmds.get(cmd_type, [])
+    return [
+        discord.SelectOption(label=cmd['name'], description=cmd.get('description', 'No description.'))
+        for cmd in commands
+    ]
 
 class CommandsCog(commands.Cog):
     def __init__(self, bot):
@@ -67,7 +78,7 @@ class CommandsCog(commands.Cog):
         command_name: Option(
             str,
             "The name of the private command you want to duplicate.",
-            autocomplete=lambda ctx: self.autocomplete_commands(ctx, "private")
+            autocomplete=lambda ctx: global_autocomplete_commands(ctx, "private")
         )
     ):
         user_id = str(ctx.author.id)
