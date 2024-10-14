@@ -9,6 +9,7 @@ from data import load_commands, save_commands
 import logging
 import json
 import os
+from discord.ui import Select, View
 
 logger = logging.getLogger('CustomCommandBot')
 
@@ -25,8 +26,10 @@ class CommandsCog(commands.Cog):
     @commands.slash_command(name="cmdlist", description="List your custom commands")
     async def cmdlist(self, ctx: discord.ApplicationContext):
         user_id = str(ctx.author.id)
-        cmds = self.bot.custom_commands.get(user_id, [])
-        if not cmds:
+        cmds = self.bot.custom_commands.get(user_id, {})
+        private_cmds = cmds.get("private", [])
+        public_cmds = cmds.get("public", [])
+        if not private_cmds and not public_cmds:
             await ctx.respond("You have no custom commands.", ephemeral=True)
             return
         embed = Embed(
@@ -34,10 +37,16 @@ class CommandsCog(commands.Cog):
             color=discord.Color.blue(),
             description="Use the menus below to manage your commands."
         )
-        for cmd in cmds:
+        if private_cmds:
             embed.add_field(
-                name=f"cc!{cmd['name']}",
-                value=cmd.get('description', 'No description.'),
+                name="Private Commands (cc!)",
+                value="\n".join([f"`cc!{cmd['name']}`: {cmd.get('description', 'No description.')}" for cmd in private_cmds]),
+                inline=False
+            )
+        if public_cmds:
+            embed.add_field(
+                name="Public Commands (pc!)",
+                value="\n".join([f"`pc!{cmd['name']}`: {cmd.get('description', 'No description.')}" for cmd in public_cmds]),
                 inline=False
             )
         view = ManageCommandsView(self.bot, user_id)
@@ -50,6 +59,67 @@ class CommandsCog(commands.Cog):
     @commands.slash_command(name="deletecmd", description="Delete an existing custom command")
     async def deletecmd(self, ctx: discord.ApplicationContext):
         await ctx.respond("Please use `/cmdlist` to manage your commands.", ephemeral=True)
+
+    @commands.slash_command(name="dtpcmd", description="Duplicate a private command to your public commands")
+    async def dtpcmd(
+        self,
+        ctx: discord.ApplicationContext,
+        command_name: Option(
+            str,
+            "The name of the private command you want to duplicate.",
+            autocomplete=lambda ctx: self.autocomplete_commands(ctx, "private")
+        )
+    ):
+        user_id = str(ctx.author.id)
+        cmds = self.bot.custom_commands.get(user_id, {})
+        private_cmds = cmds.get("private", [])
+        public_cmds = cmds.get("public", [])
+
+        # Check if the user has reached the public commands limit
+        if len(public_cmds) >= 10:
+            await ctx.respond("You have reached the maximum of 10 public commands.", ephemeral=True)
+            return
+
+        # Find the private command to duplicate
+        command = next((cmd for cmd in private_cmds if cmd['name'] == command_name.lower()), None)
+        if not command:
+            await ctx.respond(f"You do not have a private command named `{command_name}`.", ephemeral=True)
+            return
+
+        # Check if a public command with the same name already exists
+        if any(cmd['name'] == command_name.lower() for cmd in public_cmds):
+            await ctx.respond(f"You already have a public command named `{command_name}`.", ephemeral=True)
+            return
+
+        # Duplicate the command
+        duplicated_command = {
+            "name": command["name"],
+            "output": command["output"],
+            "description": command.get("description", "No description."),
+            "created_at": datetime.utcnow().isoformat()
+        }
+        # Include random_number and random_choice if they exist
+        if "random_number" in command:
+            duplicated_command["random_number"] = command["random_number"]
+        if "random_choice" in command:
+            duplicated_command["random_choice"] = command["random_choice"]
+
+        public_cmds.append(duplicated_command)
+        cmds["public"] = public_cmds
+        self.bot.custom_commands[user_id] = cmds
+        save_commands(self.bot.custom_commands)
+
+        logger.info(f"User {ctx.author} duplicated command `cc!{command_name}` to public commands.")
+        await ctx.respond(f"Successfully duplicated `cc!{command_name}` to your public commands as `pc!{command_name}`.", ephemeral=True)
+
+    async def autocomplete_commands(self, ctx: discord.AutocompleteContext, cmd_type: str):
+        user_id = str(ctx.interaction.user.id)
+        cmds = self.bot.custom_commands.get(user_id, {})
+        commands = cmds.get(cmd_type, [])
+        return [
+            discord.SelectOption(label=cmd['name'], description=cmd.get('description', 'No description.'))
+            for cmd in commands
+        ]
 
     @commands.slash_command(name="placeholders", description="List available placeholders for custom commands")
     async def placeholders_cmd(self, ctx: discord.ApplicationContext):
@@ -99,6 +169,11 @@ class CommandsCog(commands.Cog):
             inline=False
         )
         embed.add_field(
+            name="/dtpcmd",
+            value="Duplicate a private command to your public commands.",
+            inline=False
+        )
+        embed.add_field(
             name="/placeholders",
             value="List available placeholders you can use in your commands.",
             inline=False
@@ -123,7 +198,7 @@ class CommandsCog(commands.Cog):
             value="Edit a file in your virtual filesystem.",
             inline=False
         )
-        embed.set_footer(text="Use `cc!command_name` to execute your custom command.")
+        embed.set_footer(text="Use `cc!command_name` or `pc!command_name` to execute your custom commands.")
         await ctx.respond(embed=embed, ephemeral=True)
 
     @commands.slash_command(name="docs", description="Get the bot's documentation")
@@ -133,22 +208,29 @@ class CommandsCog(commands.Cog):
 
 ## Overview
 
-This bot allows users to create up to 10 custom text-based commands with the `cc!` prefix. Customize your server experience by defining your own commands using placeholders.
+This bot allows users to create up to 10 custom text-based commands with the `cc!` prefix and 10 public commands with the `pc!` prefix. Customize your server experience by defining your own commands using placeholders.
 
 ## Commands
 
 ### `/createcmd`
-Create a new custom command.
+Create a new private custom command.
 
 - **Usage:** `/createcmd`
-- **Process:** A modal will appear asking for the command name, output, and an optional description.
+- **Process:** A modal will appear asking for the command name, output, optional random number range, optional random choice options, and an optional description.
 - **Note:** You can include arguments in your command output using `{[<arg_name>]}`. Provide corresponding arguments when invoking the command.
+
+### `/dtpcmd`
+Duplicate a private custom command to your public commands.
+
+- **Usage:** `/dtpcmd command_name:<command_name>`
+- **Description:** Copies one of your private commands (`cc!command_name`) to your public commands (`pc!command_name`).
+- **Note:** You can have up to 10 public commands.
 
 ### `/cmdlist`
 List and manage your custom commands.
 
 - **Usage:** `/cmdlist`
-- **Description:** Displays all your custom commands with options to edit or delete them.
+- **Description:** Displays all your private and public custom commands with options to edit or delete them.
 
 ### `/editcmd`
 Edit an existing custom command.
@@ -194,8 +276,9 @@ Edit a file in your virtual filesystem.
 
 ## Using Custom Commands
 
-- **Prefix:** `cc!`
-- **Example:** If you create a command named `greet`, use it by typing `cc!greet`.
+- **Private Prefix:** `cc!`
+- **Public Prefix:** `pc!`
+- **Example:** If you create a private command named `greet`, use it by typing `cc!greet`. If you duplicate it to public, use it by typing `pc!greet`.
 
 ### Including Arguments
 
@@ -206,7 +289,7 @@ You can include arguments in your custom command outputs using the `{[<arg_name>
 1. **Creating a Command with Arguments:**
    - **Command Name:** `welcome`
    - **Command Output:** `Hello, {[<name>]}! Welcome to {servername}.`
-   
+
 2. **Invoking the Command:**
    - **Usage:** `cc!welcome Alice`
    - **Bot Response:** `Hello, Alice! Welcome to YourServerName.`
@@ -255,6 +338,12 @@ Custom command outputs can include placeholders that will be dynamically replace
 - `<channel_id>`: The ID of the channel where the command was used.
 - `<message_id>`: The ID of the triggering message.
 
+### Arguments Placeholders `{[<arg_name>]}`
+
+- `{[<arg1>]}`: First argument provided when invoking the command.
+- `{[<arg2>]}`: Second argument provided when invoking the command.
+- *...and so on.*
+
 ### Orange Bank Placeholders `ob_`
 
 - `ob_balance`: The user's balance from Orange Bank.
@@ -264,48 +353,18 @@ Custom command outputs can include placeholders that will be dynamically replace
 - `ob_position_in_leaderboard`: The user's position in the message leaderboard from Orange Bank.
 - `ob_daily_leaderboard_stats`: The user's daily leaderboard stats from Orange Bank.
 - `ob_balance_leaderboard_stats`: The user's balance leaderboard stats from Orange Bank.
-
-### Arguments Placeholders `{[<arg_name>]}`
-    
-- `{[<arg1>]}`: First argument provided when invoking the command.
-- `{[<arg2>]}`: Second argument provided when invoking the command.
-- *...and so on.*
-
-## Examples
-
-### Creating a Greeting Command with Arguments and Custom Random Placeholders
-
-1. Use `/createcmd`.
-2. Enter `greet` as the command name.
-3. Enter `Hello, {[<name>]}! Your lucky number is <random_number> and you chose <random_choice>. Welcome to {servername}.` as the command output.
-4. (Optional) Add a random number range like `1-1000`.
-5. (Optional) Add random choice options like `Red, Green, Blue`.
-6. (Optional) Add a description like "Greets the user with their name and a lucky number."
-7. Save the command.
-
-Now, when you type `cc!greet Alice`, the bot might respond with `Hello, Alice! Your lucky number is 472 and you chose Green. Welcome to YourServerName.`
-
-### Sharing Commands
-
-#### Sharing a Command with Another User
-
-1. Use `/sharecmd`.
-2. Select the command you want to share.
-3. Specify the target user you want to share the command with.
-4. Confirm the sharing action.
-
-The target user will receive a DM containing the data of your shared command, which they can choose to add to their own custom commands.
+- `ob_all`: All data from Orange Bank.
 
 ## Limitations
 
-- **Custom Commands per User:** Up to 10.
+- **Custom Commands per User:** Up to 10 private commands and 10 public commands.
 - **Command Output Length:** 500 characters.
 - **Command Description Length:** 150 characters.
 
 ## Notes
 
 - Only you can manage your own custom commands.
-- Others can view your command list using `/cmdlist`.
+- Others can view your public commands using `/cmdlist`.
 - Use placeholders to make your commands dynamic and personalized.
 
 Enjoy customizing your Discord experience!
@@ -320,9 +379,10 @@ Enjoy customizing your Discord experience!
 
     async def sharecmd_command_name_autocomplete(self, ctx: discord.AutocompleteContext):
         user_id = str(ctx.interaction.user.id)
-        cmds = self.bot.custom_commands.get(user_id, [])
+        cmds = self.bot.custom_commands.get(user_id, {})
+        private_cmds = cmds.get("private", [])
         return [
-            cmd.get('name', 'No Name') for cmd in cmds
+            cmd.get('name', 'No Name') for cmd in private_cmds
         ]
 
     @commands.slash_command(name="sharecmd", description="Share your custom command with another user.")
@@ -333,8 +393,9 @@ Enjoy customizing your Discord experience!
         target_user: Option(discord.User, "The user you want to share the command with.")
     ):
         user_id = str(ctx.author.id)
-        cmds = self.bot.custom_commands.get(user_id, [])
-        command = next((cmd for cmd in cmds if cmd['name'] == command_name.lower()), None)
+        cmds = self.bot.custom_commands.get(user_id, {})
+        private_cmds = cmds.get("private", [])
+        command = next((cmd for cmd in private_cmds if cmd['name'] == command_name.lower()), None)
         if not command:
             await ctx.respond(f"You do not have a command named `{command_name}`.", ephemeral=True)
             return
