@@ -121,7 +121,9 @@ class CommandSelect(Select):
             command,
             self.parent_view.current_category
         )
-        self.parent_view.add_item(management_buttons)
+        # add the buttons one by one
+        self.parent_view.add_item(management_buttons.edit_button)
+        self.parent_view.add_item(management_buttons.delete_button)
 
         await interaction.response.edit_message(view=self.parent_view)
 
