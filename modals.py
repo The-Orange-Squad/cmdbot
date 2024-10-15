@@ -195,7 +195,7 @@ class EditCommandModal(Modal):
         custom_commands = self.bot.custom_commands
 
         command_output = self.children[0].value.strip()
-        description = self.children[4].value.strip() if self.children[4].value else self.command.get("description", "No description.")
+        description = self.children[3].value.strip() if self.children[4].value else self.command.get("description", "No description.")
 
         # Handle random number range
         random_number_input = self.children[1].value.strip()
