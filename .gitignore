@@ -4,3 +4,4 @@ commands.json
 custom_commands.json
 __pycache__/
 filesystems.json
+*.backup.*

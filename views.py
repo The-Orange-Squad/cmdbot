@@ -9,7 +9,7 @@ logger = logging.getLogger('CustomCommandBot')
 
 class ManageCommandsView(View):
     def __init__(self, bot, user_id):
-        super().__init__(timeout=300)
+        super().__init__(timeout=None)
         self.bot = bot
         self.user_id = user_id
         self.current_category = 'private'  # Default to 'private'
@@ -144,3 +144,165 @@ class CommandManagementButtons(View):
     async def delete_button(self, button: Button, interaction: discord.Interaction):
         modal = ConfirmDeleteModal(self.bot, self.user_id, self.command, self.category)
         await interaction.response.send_modal(modal)
+
+class SelectDuplicateCommandView(View):
+    def __init__(self, bot, ctx, command_name, matching_commands):
+        super().__init__(timeout=60)  # Set a timeout for the View
+        self.bot = bot
+        self.ctx = ctx  # Store the context to reference later
+        self.command_name = command_name
+        self.matching_commands = matching_commands  # List of tuples (uid, cmd)
+
+        # Create Select Options
+        options = [
+            discord.SelectOption(
+                label=f"User: {self.bot.get_user(int(uid)).name}#{self.bot.get_user(int(uid)).discriminator}",
+                value=uid,
+                description=cmd.get('description', 'No description.')
+            )
+            for uid, cmd in matching_commands
+        ]
+
+        # Add the Select to the View
+        self.add_item(SelectDuplicateCommandSelect(self, options))
+
+    async def on_timeout(self):
+        # Disable all components when the View times out
+        for child in self.children:
+            child.disabled = True
+        try:
+            await self.ctx.edit_original_response(view=self)
+        except Exception as e:
+            logger.error(f"Error disabling View on timeout: {e}")
+
+class SelectDuplicateCommandSelect(Select):
+    def __init__(self, parent_view, options):
+        super().__init__(
+            placeholder="Select which user's command to duplicate...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction):
+        # Manually verify the user
+        if interaction.user.id != self.parent_view.ctx.author.id:
+            await interaction.response.send_message(
+                "You are not authorized to use this select menu.",
+                ephemeral=True
+            )
+            return
+
+        selected_uid = self.values[0]
+        command = next((cmd for uid, cmd in self.parent_view.matching_commands if uid == selected_uid), None)
+        if not command:
+            await interaction.response.send_message("Selected command not found.", ephemeral=True)
+            return
+
+        try:
+            # Duplicate the command
+            commands_cog = self.parent_view.bot.get_cog('CommandsCog')
+            if not commands_cog:
+                await interaction.response.send_message("CommandsCog not found.", ephemeral=True)
+                return
+
+            await commands_cog.duplicate_public_to_private(
+                ctx=interaction,  # Use interaction as ctx
+                target_user_id=str(interaction.user.id),
+                source_user_id=selected_uid,
+                command=command
+            )
+
+            # Stop the View to prevent further interactions
+            self.parent_view.stop()
+        except Exception as e:
+            logger.error(f"Error duplicating command: {e}")
+            await interaction.response.send_message(
+                "An error occurred while duplicating the command.",
+                ephemeral=True
+            )
+
+class SelectExecuteCommandView(View):
+    def __init__(self, bot, ctx, command_name, matching_commands, args):
+        super().__init__(timeout=60)  # Set a timeout for the View
+        self.bot = bot
+        self.ctx = ctx  # Original message
+        self.command_name = command_name
+        self.matching_commands = matching_commands  # List of tuples (uid, cmd)
+        self.args = args  # Store the original arguments
+
+        # Create Select Options
+        options = [
+            discord.SelectOption(
+                label=f"User: {self.bot.get_user(int(uid)).name}#{self.bot.get_user(int(uid)).discriminator}",
+                value=uid,
+                description=cmd.get('description', 'No description.')
+            )
+            for uid, cmd in matching_commands
+        ]
+
+        # Add the Select to the View
+        self.add_item(SelectExecuteCommandSelect(self, options))
+
+    async def on_timeout(self):
+        # Disable all components when the View times out
+        for child in self.children:
+            child.disabled = True
+        try:
+            await self.ctx.edit_original_response(view=self)
+        except Exception as e:
+            logger.error(f"Error disabling View on timeout: {e}")
+
+class SelectExecuteCommandSelect(Select):
+    def __init__(self, parent_view, options):
+        super().__init__(
+            placeholder="Select which user's command to execute...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction):
+        # Verify the user is the one who initiated the command
+        if interaction.user.id != self.parent_view.ctx.author.id:
+            await interaction.response.send_message(
+                "You are not authorized to use this select menu.",
+                ephemeral=True
+            )
+            return
+
+        selected_uid = self.values[0]
+        command = next((cmd for uid, cmd in self.parent_view.matching_commands if uid == selected_uid), None)
+        if not command:
+            await interaction.response.send_message("Selected command not found.", ephemeral=True)
+            return
+
+        try:
+            # Execute the command with stored arguments
+            events_cog = self.parent_view.bot.get_cog('EventsCog')
+            if not events_cog:
+                await interaction.response.send_message("EventsCog not found.", ephemeral=True)
+                return
+
+            await events_cog.execute_public_command(
+                message=self.parent_view.ctx,  # Pass the original message
+                command=command,
+                source_uid=selected_uid,
+                args=self.parent_view.args  # Pass the stored arguments
+            )
+
+            await interaction.response.send_message(
+                f"Executed `pc!{command['name']}` from <@{selected_uid}>.",
+                ephemeral=True
+            )
+
+            # Stop the View to prevent further interactions
+            self.parent_view.stop()
+        except Exception as e:
+            logger.error(f"Error executing command: {e}")
+            await interaction.response.send_message(
+                "An error occurred while executing the command.",
+                ephemeral=True
+            )

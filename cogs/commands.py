@@ -4,7 +4,7 @@ from discord.ext import commands
 from discord.commands import Option
 from discord import Embed
 from modals import CreateCommandModal
-from views import ManageCommandsView
+from views import ManageCommandsView, SelectDuplicateCommandView
 from utils import replace_placeholders
 from data import load_commands, save_commands
 import logging
@@ -26,6 +26,7 @@ class CommandsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.bot.custom_commands = load_commands()
+        self.active_views = []  # List to store active Views
 
     @commands.slash_command(name="createcmd", description="Create a custom command with cc! prefix")
     async def createcmd(self, ctx: discord.ApplicationContext):
@@ -89,13 +90,23 @@ class CommandsCog(commands.Cog):
             await ctx.respond("You have reached the maximum of 10 public commands.", ephemeral=True)
             return
 
+        # Check global limit for the command name
+        global_public_commands = []
+        for uid, user_cmds in self.bot.custom_commands.items():
+            for cmd in user_cmds.get("public", []):
+                if cmd['name'] == command_name.lower():
+                    global_public_commands.append((uid, cmd))
+        if len(global_public_commands) >= 5:
+            await ctx.respond(f"The public command name `{command_name}` has reached the global limit of 5.", ephemeral=True)
+            return
+
         # Find the private command to duplicate
         command = next((cmd for cmd in private_cmds if cmd['name'] == command_name.lower()), None)
         if not command:
             await ctx.respond(f"You do not have a private command named `{command_name}`.", ephemeral=True)
             return
 
-        # Check if a public command with the same name already exists
+        # Check if a public command with the same name already exists for the user
         if any(cmd['name'] == command_name.lower() for cmd in public_cmds):
             await ctx.respond(f"You already have a public command named `{command_name}`.", ephemeral=True)
             return
@@ -183,6 +194,11 @@ class CommandsCog(commands.Cog):
             inline=False
         )
         embed.add_field(
+            name="/sfmcmd",
+            value="Save a public command to your private commands.",
+            inline=False
+        )
+        embed.add_field(
             name="/placeholders",
             value="List available placeholders you can use in your commands.",
             inline=False
@@ -233,7 +249,14 @@ Duplicate a private custom command to your public commands.
 
 - **Usage:** `/dtpcmd command_name:<command_name>`
 - **Description:** Copies one of your private commands (`cc!command_name`) to your public commands (`pc!command_name`).
-- **Note:** You can have up to 10 public commands.
+- **Note:** You can have up to 10 public commands and the global limit for each command name is 5.
+
+### `/sfmcmd`
+Save a public custom command to your private commands.
+
+- **Usage:** `/sfmcmd command_name:<command_name>`
+- **Description:** Copies a public command (`pc!command_name`) from any user to your private commands (`cc!command_name`).
+- **Note:** If multiple users have a public command with the same name, you will be prompted to select which one to duplicate. You can only duplicate up to 5 public commands with the same name across all users.
 
 ### `/cmdlist`
 List and manage your custom commands.
@@ -369,6 +392,7 @@ Custom command outputs can include placeholders that will be dynamically replace
 - **Custom Commands per User:** Up to 10 private commands and 10 public commands.
 - **Command Output Length:** 500 characters.
 - **Command Description Length:** 150 characters.
+- **Global Public Command Limit:** Up to 5 public commands with the same name across all users.
 
 ## Notes
 
@@ -446,3 +470,89 @@ Enjoy customizing your Discord experience!
         except Exception as e:
             logger.error(f"Error sharing command: {e}")
             await ctx.respond("An error occurred while trying to share the command.", ephemeral=True)
+
+    @commands.slash_command(name="sfmcmd", description="Save a public command to your private commands.")
+    async def sfmcmd(
+        self,
+        ctx: discord.ApplicationContext,
+        command_name: Option(
+            str,
+            "The name of the public command you want to save.",
+            autocomplete=lambda ctx: global_autocomplete_commands(ctx, "public")
+        )
+    ):
+        command_name = command_name.lower()
+        user_id = str(ctx.author.id)
+
+        # Find all public commands with the given name across all users
+        matching_commands = []
+        for uid, user_cmds in self.bot.custom_commands.items():
+            for cmd in user_cmds.get("public", []):
+                if cmd['name'] == command_name:
+                    matching_commands.append((uid, cmd))
+                    if len(matching_commands) >= 5:
+                        break
+            if len(matching_commands) >= 5:
+                break
+
+        if not matching_commands:
+            await ctx.respond(f"No public command named `{command_name}` found.", ephemeral=True)
+            return
+
+        if len(matching_commands) == 1:
+            # Only one match, duplicate directly
+            source_uid, source_cmd = matching_commands[0]
+            await self.duplicate_public_to_private(ctx, user_id, source_uid, source_cmd)
+        else:
+            embed = Embed(
+                title="Multiple Public Commands Found",
+                description=f"There are multiple public commands named `{command_name}`. Please select which one you want to save to your private commands.",
+                color=discord.Color.orange()
+            )
+            for i, (uid, cmd) in enumerate(matching_commands, start=1):
+                user = self.bot.get_user(int(uid))
+                embed.add_field(
+                    name=f"Option {i}",
+                    value=f"**User:** {user.name}#{user.discriminator}\n**Description:** {cmd.get('description', 'No description.')}",
+                    inline=False
+                )
+            view = SelectDuplicateCommandView(self.bot, ctx, command_name, matching_commands)
+            self.active_views.append(view)  # Store the View
+            await ctx.respond(embed=embed, view=view, ephemeral=True)
+
+    async def duplicate_public_to_private(self, interaction, target_user_id, source_user_id, command):
+        # Ensure the target user has not exceeded private commands limit
+        cmds = self.bot.custom_commands.get(target_user_id, {})
+        private_cmds = cmds.get("private", [])
+
+        if len(private_cmds) >= 10:
+            await interaction.response.send_message("You have reached the maximum of 10 private commands.", ephemeral=True)
+            return
+
+        # Check for duplicate in private commands
+        if any(cmd['name'] == command['name'] for cmd in private_cmds):
+            await interaction.response.send_message(f"You already have a private command named `cc!{command['name']}`.", ephemeral=True)
+            return
+
+        # Duplicate the command
+        duplicated_command = {
+            "name": command["name"],
+            "output": command["output"],
+            "description": command.get("description", "No description."),
+            "created_at": datetime.utcnow().isoformat()
+        }
+        # Include random_number and random_choice if they exist
+        if "random_number" in command:
+            duplicated_command["random_number"] = command["random_number"]
+        if "random_choice" in command:
+            duplicated_command["random_choice"] = command["random_choice"]
+
+        private_cmds.append(duplicated_command)
+        cmds["private"] = private_cmds
+        self.bot.custom_commands[target_user_id] = cmds
+        save_commands(self.bot.custom_commands)
+
+        source_user = self.bot.get_user(int(source_user_id))
+        await interaction.response.send_message(f"Successfully saved `pc!{command['name']}` from <@{source_user_id}> to your private commands as `cc!{command['name']}`.", ephemeral=True)
+        logger.info(f"User {interaction.user} saved command `pc!{command['name']}` from user {source_user_id} to private commands.")
+

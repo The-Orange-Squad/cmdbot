@@ -6,7 +6,7 @@ import logging
 import os
 
 # Setup logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('CustomCommandBot')
 
 # Load environment variables

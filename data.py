@@ -59,7 +59,7 @@ def load_commands():
                     "Initializing empty commands."
                 )
                 data = {}
-        
+
         # Check if migration is needed
         # If any user has a list as their commands, migration is required
         needs_migration = False
@@ -67,7 +67,7 @@ def load_commands():
             if isinstance(cmds, list):
                 needs_migration = True
                 break
-        
+
         if needs_migration:
             logger.info("Migration from old format to new format is required.")
             backup_commands_file()
@@ -78,7 +78,7 @@ def load_commands():
                 logger.info("Migration completed and changes saved to custom_commands.json.")
             else:
                 logger.info("No migration was necessary.")
-        
+
         return data
     else:
         return {}
@@ -126,3 +126,13 @@ def save_filesystems(filesystems):
         logger.info("Filesystems saved.")
     except Exception as e:
         logger.error(f"Failed to save filesystems: {e}")
+
+def count_global_public_commands(command_name):
+    """
+    Counts the number of public commands with the given name across all users.
+    """
+    count = 0
+    for user_cmds in load_commands().values():
+        public_cmds = user_cmds.get("public", [])
+        count += sum(1 for cmd in public_cmds if cmd['name'] == command_name)
+    return count
