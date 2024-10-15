@@ -191,11 +191,17 @@ class EditCommandModal(Modal):
         ))
 
     async def callback(self, interaction: discord.Interaction):
+
+        print("EditCommandModal callback")
+        print(self.children[0].value)
+        print(self.children[1].value)
+        print(self.children[2].value)
+        print(self.children[3].value)
         user_id = str(interaction.user.id)
         custom_commands = self.bot.custom_commands
 
         command_output = self.children[0].value.strip()
-        description = self.children[3].value.strip() if self.children[4].value else self.command.get("description", "No description.")
+        description = self.children[3].value.strip() if self.children[3].value else self.command.get("description", "No description.")
 
         # Handle random number range
         random_number_input = self.children[1].value.strip()
